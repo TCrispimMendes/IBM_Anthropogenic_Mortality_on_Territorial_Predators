@@ -10,10 +10,6 @@ globals[
 
 
 ;; bird's related variables
-
-  SImp_non-territorial ;; survival rate of non-territorial individuals in patches with additional mortality
-  SImp_territorial ;; survival rate of territorial individuals in patches with additional mortality
-
   R2 ;; propensity to become territorial in immature birds
   R3 ;; propensity to become territorial in subadults
   R4 ;; propensity to become territorial in first-year adults
@@ -23,8 +19,7 @@ globals[
 ;;  Outputs
 
   N_Total ;; total number of individuals
-  N_pairs_before_S ;; number of pairs before the survival procedure
-  N_pairs_after_S ;; number of pairs after the survival procedure
+  N_pairs ;; number of pairs
   N_adults ;; number of adults
   N_non_adults ;; number of non-adults
   N_territorials ;; number of territorial individuals
@@ -34,6 +29,14 @@ globals[
   N_final ;; number of individuals at the end of the simulation
   N_emigrated ;; number of individuals who emigrated during the simulation
   Lambda ;; annual population growth rate
+
+  N_dispersion
+  N_dispersion_to_AM
+  P_dispersion_AM
+
+  N_recruitment
+  N_recruitment_to_AM
+  P_recruitment_AM
 
   N_deaths_NT_with_AM ;; number of non-territorials that died in patches with additional mortality
   N_deaths_NT_without_AM ;; number of non-territorials that died in patches without additional mortality
@@ -83,10 +86,10 @@ to Setup
 
   (ifelse
     population = "SPT" [setup_globals_SPT] ;; South Portuguese population
-    population = "CAT" [setup_globals_CAT] ;; Catalan population
     population = "Sensitivity_Analysis" [setup_globals_Sensitivity_Analysis])
 
   setup_patches
+  setup_additional_mortality
   setup_individuals
 
   Outputs_Collection
@@ -106,18 +109,6 @@ to setup_globals_SPT
 
   set max_ticks 51  ;; maximum simulation ticks
 
-  time:schedule-event "observer" [ ->  ;; add a event to the discrete event schedule
-    set N_initial count birds
-    setup_additional_mortality
-    set SImp_non-territorial (1 - mortality_AM_NT)
-    set SImp_territorial (1 - Mortality_AM_T)
-    set N_deaths_NT_with_AM 0
-    set N_deaths_NT_without_AM 0
-    set N_deaths_T_with_AM 0
-    set N_deaths_T_without_AM 0]
-  start-time
-
-
   ;; bird's related variables
 
   set F2 0.285714 ;; fertility of two-year olds
@@ -128,8 +119,6 @@ to setup_globals_SPT
   set S23 0.719976 ;; survival rate of individuals during their second and third years of life
   set S4 0.874833  ;; survival rate of individuals during their fourth year of life
   set SA 0.937492  ;; survival rate of individuals during their fifth and subsequent (adult) years of life
-  set SImp_non-territorial 1
-  set SImp_territorial 1
 
   set R2 0.160763 ;; propensity to become territorial in immature birds
   set R3 0.679674 ;; propensity to become territorial in subadults
@@ -144,49 +133,6 @@ to setup_globals_SPT
 end
 
 
-to setup_globals_CAT
-
-  ;; schedule
-
-  set start-time time:create "0000/01/01" ;; start the simulation on January 1, 1992
-  set sim_year time:anchor-to-ticks start-time 1 "years" ;;  sim_year starts at start-time and has 1-year increments for each tick
-  time:anchor-schedule start-time 1 "years" ;; schedule events (time extension) starts at start-time and has 1-year increments for each tick
-
-  set max_ticks 51 ;; maximum simulation ticks
-
-  time:schedule-event "observer" [ ->  ;; add a event to the discrete event schedule
-    set N_initial count birds
-    setup_additional_mortality
-    set SImp_non-territorial (1 - mortality_AM_NT)
-    set SImp_territorial (1 - Mortality_AM_T)
-    set N_deaths_NT_with_AM 0
-    set N_deaths_NT_without_AM 0
-    set N_deaths_T_with_AM 0
-    set N_deaths_T_without_AM 0]
- start-time ;;  perform the event  "PopulatioN_initial" years after the start of the simulation
-
-  ;; bird's related variables
-
-  set F2 0.285714 ;; fertility of two-year olds
-  set F3 0.4 ;; fertility of three-year olds
-  set FA 1.129109 ;; fertility of adults
-
-  set S1 0.480266  ;; survival rate of individuals during their first year of life
-  set S23 0.573883  ;; survival rate of individuals during their second and third years of life
-  set S4 0.829643  ;; survival rate of individuals during their fourth year of life
-  set SA 0.889066  ;; survival rate of individuals during their fifth and subsequent (adult) years of life
-  set SImp_non-territorial 1
-  set SImp_territorial 1
-
-  set R2 0.160763 ;; propensity to become territorial in immature birds
-  set R3 0.679674 ;; propensity to become territorial in subadults
-  set R4 0.934197 ;; propensity to become territorial in first-year adults
-  set RA 1 ;;propensity to become territorial in adults
-
-  set Pop_persistence 50
-
-end
-
 
 to setup_globals_Sensitivity_Analysis
 
@@ -198,22 +144,7 @@ to setup_globals_Sensitivity_Analysis
 
   set max_ticks 51 ;; maximum simulation ticks
 
-  time:schedule-event "observer" [ ->  ;; add a event to the discrete event schedule
-    set N_initial count birds
-    setup_additional_mortality
-    set SImp_non-territorial (1 - mortality_AM_NT)
-    set SImp_territorial (1 - Mortality_AM_T)
-    set N_deaths_NT_with_AM 0
-    set N_deaths_NT_without_AM 0
-    set N_deaths_T_with_AM 0
-    set N_deaths_T_without_AM 0]
-  start-time ;;  perform the event  "PopulatioN_initial" years after the start of the simulation
-
-
   ;; bird's related variables
-
-  set SImp_non-territorial 1
-  set SImp_territorial 1
 
   set R2 0.160763 ;; propensity to become territorial in immature birds
   set R3 0.679674 ;; propensity to become territorial in subadults
@@ -227,14 +158,14 @@ end
 
 to setup_patches
 
-  if %_Unoccupiable + %_B + %_A != 100 [error "Sum of patch type percentages is different from 100!"] ;; Causes a runtime error if the sum of percetages is different from 100
+  ask patch 0 0 [set p_type "unoccupiable"]
 
-
-  ask n-of round ((%_B * 0.01) * count patches) patches with [p_type = 0] [ ;; ask to a number of patches corresponding to the % defined of %_B to
+  ask n-of N_Patches_B patches with [p_type = 0] [ ;; ask to a number of patches corresponding to the % defined of %_B to
     set p_type "B"] ;; define p_type "B"
 
-  ask n-of round ((%_A * 0.01) * count patches) patches with [p_type = 0] [ ;; ask to a number of patches corresponding to the % defined of %_A to
+  ask n-of N_Patches_A patches with [p_type = 0] [ ;; ask to a number of patches corresponding to the % defined of %_A to
     set p_type "A"] ;; define p_type "A"
+
 
   ask patches with [p_type = 0] [ ;; ask the remaining patches whit p_type = 0 to
     set p_type "unoccupiable"] ;; define p_type "unoccupiable"
@@ -249,6 +180,7 @@ to setup_patches
       p_type = "A"  [set pcolor green] ;; if it is A, define the color green
     )
   ]
+
 
 end
 
@@ -277,27 +209,28 @@ to setup_individuals
 
  ;; create territorials
 
-  create-birds  2 [set age 2 set age_class "juvenile"]
-  create-birds  7 [set age 3 set age_class "immature"]
-  create-birds  7 [set age 4 set age_class "subadult"]
-  create-birds  6 [set age 5 set age_class "adult"]
-  create-birds  6 [set age 6 set age_class "adult"]
-  create-birds  5 [set age 7 set age_class "adult"]
-  create-birds  4 [set age 8 set age_class "adult"]
-  create-birds  4 [set age 9 set age_class "adult"]
-  create-birds  4 [set age 10 set age_class "adult"]
-  create-birds  3 [set age 11 set age_class "adult"]
-  create-birds  3 [set age 12 set age_class "adult"]
-  create-birds  3 [set age 13 set age_class "adult"]
-  create-birds  2 [set age 14 set age_class "adult"]
-  create-birds  2 [set age 15 set age_class "adult"]
-  create-birds  2 [set age 16 set age_class "adult"]
-  create-birds  2 [set age 17 set age_class "adult"]
-  create-birds  2 [set age 18 set age_class "adult"]
-  create-birds  1 [set age 19 set age_class "adult"]
-  create-birds  1 [set age 20 set age_class "adult"]
+  create-birds round ((0.14438792 * N_individuals) * 0.160762598) [set age 2 set age_class "juvenile"]
+  create-birds round ((0.09949114 * N_individuals) * 0.679674065) [set age 3 set age_class "immature"]
+  create-birds round ((0.06855481 * N_individuals) *  0.934196726) [set age 4 set age_class "subadult"]
+  create-birds round ((0.05739825 * N_individuals) * 1) [set age 5 set age_class "adult"]
+  create-birds round ((0.05149935 * N_individuals) * 1) [set age 6 set age_class "adult"]
+  create-birds round ((0.04620669 * N_individuals) * 1) [set age 7 set age_class "adult"]
+  create-birds round ((0.04145796 * N_individuals) * 1) [set age 8 set age_class "adult"]
+  create-birds round ((0.03719727 * N_individuals) * 1) [set age 9 set age_class "adult"]
+  create-birds round ((0.03337445 * N_individuals) * 1) [set age 10 set age_class "adult"]
+  create-birds round ((0.02994451 * N_individuals) * 1) [set age 11 set age_class "adult"]
+  create-birds round ((0.02686707 * N_individuals) * 1) [set age 12 set age_class "adult"]
+  create-birds round ((0.0241059  * N_individuals) * 1) [set age 13 set age_class "adult"]
+  create-birds round ((0.02162851 * N_individuals) * 1) [set age 14 set age_class "adult"]
+  create-birds round ((0.01940571 * N_individuals) * 1) [set age 15 set age_class "adult"]
+  create-birds round ((0.01741136 * N_individuals) * 1) [set age 16 set age_class "adult"]
+  create-birds round ((0.01562197 * N_individuals) * 1) [set age 17 set age_class "adult"]
+  create-birds round ((0.01401648 * N_individuals) * 1) [set age 18 set age_class "adult"]
+  create-birds round ((0.01257598 * N_individuals) * 1) [set age 19 set age_class "adult"]
+  create-birds round ((0.01128353 * N_individuals) * 1) [set age 20 set age_class "adult"]
 
-  ask n-of 33 birds  [
+
+  ask n-of (count birds / 2) birds  [
     set sex "F"
     set color pink
     set territorial False
@@ -317,18 +250,28 @@ to setup_individuals
     Set_Territory who]
 
 
- ;; create non-territorials
+  ;; create non-territorials
 
-  create-birds  24 [custom-bird set age 1 set age_class "subadult"]
-  create-birds  14 [custom-bird set age 2 set age_class "juvenile"]
-  create-birds  4 [custom-bird set age 3 set age_class "immature"]
+  create-birds round ((0.22757114 * N_individuals) - round ((0.22757114 * N_individuals) * 0)) [custom-bird set age 1 set age_class "juvenile"]
+  create-birds round ((0.14438792 * N_individuals) - round ((0.14438792 * N_individuals) * 0.160762598)) [custom-bird set age 2 set age_class "immature"]
+  create-birds round ((0.09949114 * N_individuals) - round ((0.09949114 * N_individuals) * 0.679674065)) [custom-bird set age 3 set age_class "subadult"]
+  create-birds round ((0.06855481 * N_individuals) - round ((0.06855481 * N_individuals) * 0.934196726)) [custom-bird set age 4 set age_class "adult"]
 
-  let non-territorials birds  with [territorial = False]
-  Dispersal  non-territorials
 
-  ask patch 0 0 [set non_territorials count birds-here with [territorial = False]]
+  let non-territorials birds with [territorial = False]
+  Dispersal non-territorials
+
+  ask patch 0 0 [set non_territorials 0]
+
+  set  N_dispersion 0
+  set  N_dispersion_to_AM 0
+  set  N_recruitment 0
+  set  N_recruitment_to_AM 0
+
+  set N_initial count birds
 
 end
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Go procedures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -337,14 +280,11 @@ to Go
   if ticks = max_ticks [stop] ;; stops the simulation when it reaches max_ticks
   tick ;; add one tick
 
-  time:go-until sim_year ;; Dispatch all of the events in the discrete event schedule that are scheduled for times up until sim_year
-
+  Survival
   Ageing
   Territorial_recruitment
   Reproduction
   Disperse_from_Nest
-
-  Survival
 
   Outputs_Collection
 
@@ -417,6 +357,8 @@ to Set_Territory [id]
         create-link-with one-of other birds-here with [territorial = True] ;; create a link with a bird with territory here, other than me
         ask patch-here [ ;; ask the patch where it is
           set occupied_M True ;; to set occupied_M True
+          set N_recruitment N_recruitment + 1
+          if additional_mortality = true [set N_recruitment_to_AM N_recruitment_to_AM + 1]
           if non_territorials > 0 [ ;; if there is any non_territorial individual in the patch
             let dispersers turtles-here with [territorial = False]  ;; define "dispersers" as the individuals in this patch with no defined territory
             Dispersal  dispersers ;; run the Dispersal  procedure for the dispersers
@@ -433,6 +375,8 @@ to Set_Territory [id]
           set territorial True ;; set territorial True
           ask patch-here [ ;; ask the patch where it is
             set occupied_M True ;; to set occupied_M True
+            set N_recruitment N_recruitment + 1
+            if additional_mortality = true [set N_recruitment_to_AM N_recruitment_to_AM + 1]
             if non_territorials = 5 [ ;; if there is 5 non_territorial individuals in the patch
               let dispersers one-of turtles-here with [territorial = False]  ;; define "dispersers" as one of the individuals in this patch with no defined territory
               Dispersal  dispersers ;; run the Dispersal  procedure for the dispersers
@@ -462,6 +406,8 @@ to Set_Territory [id]
         create-link-with one-of other birds-here with [territorial = True] ;; create a link with a bird with territory here, other than me
         ask patch-here [ ;; ask the patch where it is
           set occupied_F True ;; to set occupied_M True
+          set N_recruitment N_recruitment + 1
+          if additional_mortality = true [set N_recruitment_to_AM N_recruitment_to_AM + 1]
           if non_territorials > 0 [ ;; if there is any non_territorial individual in the patch
             let dispersers turtles-here with [territorial = False]  ;; define "dispersers" as the individuals in this patch with no defined territory
             Dispersal  dispersers ;; run the Dispersal  procedure for the dispersers
@@ -542,7 +488,10 @@ to Dispersal [dispersers]
       [set N_emigrated N_emigrated + 1  ;; add 1 to N_emigrated
         die] ;; die (equivalent to migrate)
     ]
-    ask patch-here [set non_territorials non_territorials + 1]
+    ask patch-here [
+      set N_dispersion N_dispersion + 1
+      if additional_mortality = true [set N_dispersion_to_AM N_dispersion_to_AM + 1]
+      set non_territorials non_territorials + 1]
   ]
 
 end
@@ -550,108 +499,111 @@ end
 
 to Survival ;; individual additionl mortality
 
-  set N_pairs_before_S count links
-  set N_NT_before_S Count birds  with [territorial = False]
-  set N_T_before_S Count birds  with [territorial = TRUE]
+  if ticks > 1 [
 
-  ask birds  [
+    set N_NT_before_S Count birds  with [territorial = False]
+    set N_T_before_S Count birds  with [territorial = TRUE]
 
-    (ifelse
-      age = 1 [ ;; individuals aged 1 have a probability of dying equal to 1-S1
-        let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-        ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S1 * SImp_non-territorial))] [set mortality_rate (1 - S1)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-        if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-          ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
-          ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
-          die]] ;; die
+    ask birds  [
 
-      age = 2 or age = 3 [ ;; individuals aged 2 or 3
-        (ifelse
-          territorial = True [ ;; if territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S23 * SImp_territorial))] [set mortality_rate (1 - S23)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-              (ifelse
-                sex = "M" [ ;; if it's a male
-                  ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
-                sex = "F" [ ;; if it's a female
-                  ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
-              die]] ;; die
-          territorial = False [ ;; if non-territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S23 * SImp_non-territorial))] [set mortality_rate (1 - S23)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-              ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
-              die]] ;; die
-      )]
-
-      age = 4 [ ;; individuals aged 4
-        (ifelse
-          territorial = True [ ;; if territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S4 * SImp_territorial))] [set mortality_rate (1 - S4)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; ;; have a probability of dying equal to "mortality_rate"
-              (ifelse
-                sex = "M" [ ;; if it's a male
-                  ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
-                sex = "F" [ ;; if it's a female
-                  ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
-              die]] ;; die
-          territorial = False [ ;; if non-territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S4 * SImp_non-territorial))] [set mortality_rate (1 - S4)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-              ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
-              die]] ;; die
-      )]
-
-      age > 4 and age < 20 [ ;; individuals over the age of 4
-        (ifelse
-          territorial = True [ ;; if territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (SA * SImp_territorial))] [set mortality_rate (1 - SA)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-              (ifelse
-                sex = "M" [ ;; if it's a male
-                  ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
-                sex = "F" [ ;; if it's a female
-                  ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
-              die]] ;; die
-          territorial = False [ ;; if non-territorial
-            let mortality_rate 0  ;; create the temporary variable "mortality_rate"
-            ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (SA * SImp_non-territorial))] [set mortality_rate (1 - SA)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
-            if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
-              ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
-              ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
-              die]] ;; die
-      )]
-
-      age >= 20 [ ;; individuals aged 20
-        (ifelse
-          territorial = True [ ;; if territorial
-            (ifelse
-              sex = "M" [ ;; if it's a male
-                ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
-              sex = "F" [ ;; if it's a female
-                ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
-            ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
-            die] ;; die
-          territorial = False [ ;; if non-territorial
+      (ifelse
+        age = 1 [ ;; individuals aged 1 have a probability of dying equal to 1-S1
+          let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+          ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S1 * (1 - mortality_AM_NT)))] [set mortality_rate (1 - S1)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+          if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
             ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
             ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
-            die] ;; die
-      )]
+            die]] ;; die
 
-  )]
+        age = 2 or age = 3 [ ;; individuals aged 2 or 3
+          (ifelse
+            territorial = True [ ;; if territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S23 * (1 - Mortality_AM_T)))] [set mortality_rate (1 - S23)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
+                (ifelse
+                  sex = "M" [ ;; if it's a male
+                    ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
+                  sex = "F" [ ;; if it's a female
+                    ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
+                die]] ;; die
+            territorial = False [ ;; if non-territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S23 * (1 - mortality_AM_NT)))] [set mortality_rate (1 - S23)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
+                ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
+                die]] ;; die
+        )]
 
-  set N_pairs_after_S count links
-  set N_NT_after_S Count birds  with [territorial = False]
-  set N_T_after_S Count birds  with [territorial = TRUE]
+        age = 4 [ ;; individuals aged 4
+          (ifelse
+            territorial = True [ ;; if territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S4 * (1 - Mortality_AM_T)))] [set mortality_rate (1 - S4)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; ;; have a probability of dying equal to "mortality_rate"
+                (ifelse
+                  sex = "M" [ ;; if it's a male
+                    ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
+                  sex = "F" [ ;; if it's a female
+                    ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
+                die]] ;; die
+            territorial = False [ ;; if non-territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (S4 * (1 - mortality_AM_NT)))] [set mortality_rate (1 - S4)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
+                ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
+                die]] ;; die
+        )]
+
+        age > 4 and age < 20 [ ;; individuals over the age of 4
+          (ifelse
+            territorial = True [ ;; if territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (SA * (1 - Mortality_AM_T)))] [set mortality_rate (1 - SA)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
+                (ifelse
+                  sex = "M" [ ;; if it's a male
+                    ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
+                  sex = "F" [ ;; if it's a female
+                    ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
+                die]] ;; die
+            territorial = False [ ;; if non-territorial
+              let mortality_rate 0  ;; create the temporary variable "mortality_rate"
+              ifelse [additional_mortality] of patch-here = True [set mortality_rate (1 - (SA * (1 - mortality_AM_NT)))] [set mortality_rate (1 - SA)] ;; if the individual is in a patch with "additional_mortality" set to "TRUE" the additional survival probability value (terriotial or non-territorial) is multipied to the baseline probability of survival
+              if random-bernoulli (mortality_rate) [ ;; have a probability of dying equal to "mortality_rate"
+                ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
+                ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
+                die]] ;; die
+        )]
+
+        age >= 20 [ ;; individuals aged 20
+          (ifelse
+            territorial = True [ ;; if territorial
+              (ifelse
+                sex = "M" [ ;; if it's a male
+                  ask patch-here [set occupied_M False]] ;; ask the patch to set occupied_M False
+                sex = "F" [ ;; if it's a female
+                  ask patch-here [set occupied_F False]]) ;; ask the patch to set occupied_F False
+              ifelse [additional_mortality] of patch-here = True [set N_deaths_T_with_AM N_deaths_T_with_AM + 1][set N_deaths_T_without_AM N_deaths_T_without_AM + 1]
+              die] ;; die
+            territorial = False [ ;; if non-territorial
+              ask patch-here [set non_territorials non_territorials - 1] ;; ask the patch where it is to subtract 1 from the non_territorials
+              ifelse [additional_mortality] of patch-here = True [set N_deaths_NT_with_AM N_deaths_NT_with_AM + 1][set N_deaths_NT_without_AM N_deaths_NT_without_AM + 1]
+              die] ;; die
+        )]
+
+    )]
+
+
+    set N_NT_after_S Count birds  with [territorial = False]
+    set N_T_after_S Count birds  with [territorial = TRUE]
+
+  ]
 
 end
 
@@ -670,13 +622,17 @@ to Outputs_Collection
 
   set N_non_territorials count birds  with [territorial = False]
 
+  set N_pairs count links
+
   if count birds  with [sex = "F"] = 0 or count birds  with [sex = "M"] = 0 [if Pop_persistence = 50 [set Pop_persistence time:get "year" sim_year]]
 
   if count birds  with [sex = "F"] > 0 and count birds  with [sex = "M"] > 0 [set N_final count birds ]
 
+  carefully [set P_dispersion_AM N_dispersion_to_AM / N_dispersion] []
+  carefully [set P_recruitment_AM N_recruitment_to_AM / N_recruitment] []
 
   carefully [set P_NT_AM (count birds  with [territorial = False and [additional_mortality] of patch-here = true]) / N_non_territorials][set P_NT_AM 0]
-  carefully [set P_pairs_AM count (patches with [additional_mortality = True and occupied_M = true and occupied_F = true]) / count links] [set P_pairs_AM 0]
+  carefully [set P_pairs_AM count (patches with [additional_mortality = True and occupied_M = true and occupied_F = true]) / N_pairs] [set P_pairs_AM 0]
   carefully [set P_T_AM (count birds  with [territorial = True and [additional_mortality] of patch-here = true]) / N_territorials][set P_T_AM 0]
 
   carefully [set P_deaths_NT_AM N_deaths_NT_with_AM / (N_deaths_NT_with_AM + N_deaths_NT_without_AM)] [set P_deaths_NT_AM 0]
@@ -686,16 +642,16 @@ to Outputs_Collection
   carefully [set list_NT_survival lput (N_NT_after_S / N_NT_before_S) list_NT_survival] []
   carefully [set list_T_survival lput (N_T_after_S / N_T_before_S) list_T_survival][]
 
+  carefully [set mean_NT_survival mean list_NT_survival][]
+  carefully [set mean_T_survival mean list_T_survival][]
 
-  if time:get "year" sim_year = 50 [
-    ifelse N_total > 0 [set Lambda (N_Total / N_initial)^(1 / 50)][
+
+  let year time:get "year" sim_year
+  if year > 0 [
+    ifelse N_total > 0 [set Lambda (N_Total / N_initial)^(1 / year)][
       ifelse Pop_persistence = 1 [set Lambda 0][
         set Lambda (N_final / N_initial)^(1 / (Pop_persistence - 1))]
-    ]
-
-    set mean_NT_survival mean list_NT_survival
-    set mean_T_survival mean list_T_survival
-  ]
+  ]]
 
 end
 
@@ -817,28 +773,6 @@ time:get \"year\" sim_year
 1
 11
 
-INPUTBOX
-281
-170
-378
-230
-%_B
-16.5
-1
-0
-Number
-
-INPUTBOX
-185
-170
-281
-230
-%_A
-43.5
-1
-0
-Number
-
 SLIDER
 109
 376
@@ -848,7 +782,7 @@ Mortality_AM_NT
 Mortality_AM_NT
 0
 1
-0.0
+0.5
 0.01
 1
 NIL
@@ -863,28 +797,17 @@ Mortality_AM_T
 Mortality_AM_T
 0
 1
-0.0
+0.5
 0.01
 1
 NIL
 HORIZONTAL
 
 MONITOR
-1045
-218
-1148
-263
-NIL
-N_pairs_after_S
-0
-1
-11
-
-MONITOR
-843
-218
-944
-263
+974
+192
+1075
+237
 NIL
 N_Adults
 17
@@ -892,10 +815,10 @@ N_Adults
 11
 
 MONITOR
-843
-173
-944
-218
+873
+192
+974
+237
 NIL
 N_Non_Adults
 17
@@ -903,10 +826,10 @@ N_Non_Adults
 11
 
 MONITOR
-944
-218
-1045
-263
+974
+237
+1075
+282
 NIL
 N_Territorials
 17
@@ -914,10 +837,10 @@ N_Territorials
 11
 
 MONITOR
-944
-173
-1045
-218
+873
+237
+974
+282
 NIL
 N_Non_Territorials
 17
@@ -925,10 +848,10 @@ N_Non_Territorials
 11
 
 MONITOR
-843
-308
-944
-353
+1075
+192
+1178
+237
 NIL
 N_Total
 17
@@ -936,10 +859,10 @@ N_Total
 11
 
 MONITOR
-1148
-218
-1248
-263
+1075
+147
+1178
+192
 NIL
 Pop_persistence
 17
@@ -958,11 +881,11 @@ A_AM
 Number
 
 TEXTBOX
-162
+102
 142
-354
+294
 160
-Patch type percentage
+Patch type
 15
 0.0
 1
@@ -988,10 +911,10 @@ Probability of additional mortality
 1
 
 TEXTBOX
-961
-145
-1111
-164
+957
+112
+1107
+131
 Output Parameters
 15
 0.0
@@ -1003,16 +926,16 @@ INPUTBOX
 185
 331
 Patches_AM
-25.0
+50.0
 1
 0
 Number
 
 MONITOR
-1148
-173
-1248
-218
+1178
+192
+1278
+237
 NIL
 N_emigrated
 17
@@ -1020,26 +943,15 @@ N_emigrated
 11
 
 MONITOR
-1045
-173
-1148
-218
+1075
+237
+1178
+282
 NIL
-N_pairs_before_S
+N_pairs
 17
 1
 11
-
-INPUTBOX
-87
-170
-185
-230
-%_Unoccupiable
-40.0
-1
-0
-Number
 
 INPUTBOX
 289
@@ -1053,10 +965,10 @@ B_AM
 Number
 
 MONITOR
-944
-308
-1046
-353
+873
+147
+974
+192
 NIL
 N_initial
 17
@@ -1064,10 +976,10 @@ N_initial
 11
 
 MONITOR
-843
-263
-915
-308
+1075
+327
+1178
+372
 NIL
 P_pairs_AM
 2
@@ -1075,10 +987,10 @@ P_pairs_AM
 11
 
 MONITOR
-985
-263
-1059
-308
+974
+327
+1075
+372
 NIL
 P_T_AM
 2
@@ -1086,10 +998,10 @@ P_T_AM
 11
 
 MONITOR
-1059
-263
-1150
-308
+974
+417
+1075
+462
 NIL
 P_deaths_T_AM
 2
@@ -1097,10 +1009,10 @@ P_deaths_T_AM
 11
 
 MONITOR
-1046
-308
-1149
-353
+974
+147
+1075
+192
 NIL
 N_final
 17
@@ -1108,10 +1020,10 @@ N_final
 11
 
 MONITOR
-915
-263
-985
-308
+873
+327
+974
+372
 NIL
 P_NT_AM
 2
@@ -1119,10 +1031,10 @@ P_NT_AM
 11
 
 MONITOR
-1149
-263
-1248
-308
+873
+417
+974
+462
 NIL
 P_deaths_NT_AM
 2
@@ -1130,10 +1042,10 @@ P_deaths_NT_AM
 11
 
 INPUTBOX
-341
-466
-391
-526
+353
+464
+403
+524
 FA
 0.830328
 1
@@ -1141,10 +1053,10 @@ FA
 Number
 
 INPUTBOX
-192
-466
-242
-526
+204
+464
+254
+524
 SA
 0.937492
 1
@@ -1152,10 +1064,10 @@ SA
 Number
 
 INPUTBOX
-42
-466
-92
-526
+54
+464
+104
+524
 S1
 0.662946
 1
@@ -1163,10 +1075,10 @@ S1
 Number
 
 INPUTBOX
-92
-466
-142
-526
+104
+464
+154
+524
 S23
 0.719976
 1
@@ -1174,10 +1086,10 @@ S23
 Number
 
 INPUTBOX
-142
-466
-192
-526
+154
+464
+204
+524
 S4
 0.874833
 1
@@ -1185,10 +1097,10 @@ S4
 Number
 
 INPUTBOX
-241
-466
-291
-526
+253
+464
+303
+524
 F2
 0.285714
 1
@@ -1196,10 +1108,10 @@ F2
 Number
 
 INPUTBOX
-291
-466
-341
-526
+303
+464
+353
+524
 F3
 0.5
 1
@@ -1207,13 +1119,13 @@ F3
 Number
 
 MONITOR
-1149
-308
-1248
-353
+1178
+147
+1278
+192
 NIL
 Lambda
-2
+4
 1
 11
 
@@ -1224,8 +1136,95 @@ CHOOSER
 124
 Population
 Population
-"SPT" "CAT" "Sensitivity_Analysis"
+"SPT" "Sensitivity_Analysis"
 0
+
+INPUTBOX
+92
+168
+177
+228
+N_Patches_A
+131.0
+1
+0
+Number
+
+INPUTBOX
+176
+168
+261
+228
+N_Patches_B
+50.0
+1
+0
+Number
+
+INPUTBOX
+288
+167
+373
+227
+N_Individuals
+108.0
+1
+0
+Number
+
+TEXTBOX
+291
+144
+441
+163
+N individuals
+15
+0.0
+1
+
+MONITOR
+974
+282
+1076
+327
+NIL
+P_recruitment_AM
+2
+1
+11
+
+MONITOR
+873
+282
+974
+327
+NIL
+P_dispersion_AM
+2
+1
+11
+
+MONITOR
+873
+372
+974
+417
+NIL
+mean_NT_survival
+2
+1
+11
+
+MONITOR
+974
+372
+1075
+417
+NIL
+mean_T_survival
+2
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
